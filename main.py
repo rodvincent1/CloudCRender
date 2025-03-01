@@ -1,68 +1,99 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import uvicorn
 import csv
 import os
+import random
 
 app = FastAPI()
 
-# Pydantic model to validate the data for creating users
-class UserCreate(BaseModel):
-    user_id: int
-    username: str
+# Character schema
+class Character(BaseModel):
+    name: str
+    age: int
+    favorite_food: str
+    quote: str
 
-# Function to write user data to the CSV file
-def write_to_csv(user_id: int, username: str):
-    csv_file = "users_data.csv"
-    file_exists = os.path.isfile(csv_file)
+# Quote schema
+class Quote(BaseModel):
+    name: str
+    quote: str
+
+CHARACTER_FILE = "characters.csv"
+QUOTE_FILE = "quotes.csv"
+
+# Function to write data to a CSV file
+def write_to_csv(file: str, headers: list, data: list):
+    file_exists = os.path.isfile(file)
     
-    # Print data to terminal for debugging
-    print(f"Writing data to {csv_file}: user_id={user_id}, username={username}")
-    
-    with open(csv_file, mode='a', newline='') as file:
-        writer = csv.writer(file)
+    with open(file, mode='a', newline='') as f:
+        writer = csv.writer(f)
         
-        # If the file doesn't exist, write the headers
+        # Write headers if the file is new
         if not file_exists:
-            writer.writerow(["user_id", "username"])
+            writer.writerow(headers)
         
-        # Write the new user data
-        writer.writerow([user_id, username])
+        writer.writerow(data)
 
-# POST endpoint to create a new user and save the data to CSV
-@app.post("/create_user/")
-async def create_user(user_data: UserCreate):
-    # Print received data for debugging
-    print(f"Received data: user_id={user_data.user_id}, username={user_data.username}")
+# POST: Create a new character@app.post("/create_character/")
+async def create_character(character: Character):
+    write_to_csv(CHARACTER_FILE, ["name", "age", "favorite_food", "quote"],
+                 [character.name, character.age, character.favorite_food, character.quote])
+    write_to_csv(QUOTE_FILE, ["name", "quote"], [character.name, character.quote])
+    return {"msg": "Character created successfully!", "character": character}
+
+# POST: Add a quote for an existing character
+@app.post("/add_quote/")
+async def add_quote(quote: Quote):
+    if not os.path.exists(CHARACTER_FILE):
+        raise HTTPException(status_code=404, detail="Character file not found.")
     
-    user_id = user_data.user_id
-    username = user_data.username
+    with open(CHARACTER_FILE, mode='r') as f:
+        reader = csv.DictReader(f)
+        if quote.name not in [row["name"] for row in reader]:
+            raise HTTPException(status_code=404, detail="Character not found.")
     
-    # Write the received data to the CSV file
-    write_to_csv(user_id, username)
+    write_to_csv(QUOTE_FILE, ["name", "quote"], [quote.name, quote.quote])
+    return {"msg": "Quote added successfully!", "quote": quote}
+
+# GET: Retrieve all characters
+@app.get("/characters/")
+def get_characters():
+    if not os.path.exists(CHARACTER_FILE):
+        return {"msg": "No characters found."}
     
-    # Return success message with the received data
-    return {
-        "msg": "We got data successfully and saved it to CSV",
-        "user_id": user_id,
-        "username": username,
-    }
+    with open(CHARACTER_FILE, mode='r') as f:
+        reader = csv.DictReader(f)
+        characters = list(reader)
+    
+    return {"characters": characters}
 
-# GET endpoint to retrieve all users from the CSV file
-@app.get("/get_users/")
-def get_users():
-    csv_file = "users_data.csv"
-    users = []
+# GET: Retrieve a character by name
+@app.get("/characters/{name}")
+async def get_character(name: str):
+    if not os.path.exists(CHARACTER_FILE):
+        raise HTTPException(status_code=404, detail="Character file not found.")
+    
+    with open(CHARACTER_FILE, mode='r') as f:
+        reader = csv.DictReader(f)
+        characters = [row for row in reader if row["name"].lower() == name.lower()]
+    
+    if not characters:
+        raise HTTPException(status_code=404, detail="Character not found.")
+    
+    return {"character": characters}
 
-    # If the file exists, read the user data
-    if os.path.exists(csv_file):
-        with open(csv_file, mode='r') as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                users.append(row)
-
-    return {"users": users}
-
-# Run the FastAPI app
-if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.4", port=8000)
+# GET: Retrieve a random quote
+@app.get("/quote/")
+def get_random_quote():
+    if not os.path.exists(QUOTE_FILE):
+        return {"msg": "No quotes available."}
+    
+    with open(QUOTE_FILE, mode='r') as f:
+        reader = csv.DictReader(f)
+        quotes = list(reader)
+    
+    if not quotes:
+        return {"msg": "No quotes available."}
+    
+    random_quote = random.choice(quotes)
+    return {"quote": random_quote}
