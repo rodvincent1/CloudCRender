@@ -24,21 +24,27 @@ QUOTE_FILE = "quotes.csv"
 # Function to write data to a CSV file
 def write_to_csv(file: str, headers: list, data: list):
     file_exists = os.path.isfile(file)
-    
+
     with open(file, mode='a', newline='') as f:
         writer = csv.writer(f)
-        
-        # Write headers if the file is new
+
+        # Create the file with headers if it does not exist
         if not file_exists:
             writer.writerow(headers)
-        
-        writer.writerow(data)
+            print(f"Created {file} with headers: {headers}")
 
-# POST: Create a new character@app.post("/create_character/")
+        writer.writerow(data)
+        print(f"Data written to {file}: {data}")  # Debugging line
+
+# POST: Create a new character
+@app.post("/create_character/")
 async def create_character(character: Character):
+    print(f"Creating character: {character}")  # Debugging line
+    
     write_to_csv(CHARACTER_FILE, ["name", "age", "favorite_food", "quote"],
                  [character.name, character.age, character.favorite_food, character.quote])
     write_to_csv(QUOTE_FILE, ["name", "quote"], [character.name, character.quote])
+    
     return {"msg": "Character created successfully!", "character": character}
 
 # POST: Add a quote for an existing character
@@ -65,6 +71,9 @@ def get_characters():
         reader = csv.DictReader(f)
         characters = list(reader)
     
+    if not characters:
+        return {"msg": "No characters found."}
+
     return {"characters": characters}
 
 # GET: Retrieve a character by name
